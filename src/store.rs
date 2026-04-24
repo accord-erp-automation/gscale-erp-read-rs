@@ -245,9 +245,9 @@ LIMIT 1
 
         let mut sql_text = String::from(
             r#"
-SELECT warehouse, MAX(actual_qty) AS actual_qty
+SELECT warehouse, CAST(MAX(actual_qty) AS DOUBLE) AS actual_qty
 FROM (
-    SELECT warehouse, actual_qty
+    SELECT warehouse, CAST(actual_qty AS DOUBLE) AS actual_qty
     FROM tabBin
     WHERE item_code = ? AND actual_qty > 0
 
@@ -255,7 +255,7 @@ FROM (
 
     SELECT DISTINCT
         item_default.default_warehouse AS warehouse,
-        0 AS actual_qty
+        CAST(0 AS DOUBLE) AS actual_qty
     FROM tabItem
     INNER JOIN `tabItem Default` item_default
         ON item_default.parent = tabItem.name
