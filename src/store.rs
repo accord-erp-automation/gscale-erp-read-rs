@@ -68,6 +68,12 @@ pub trait CatalogStore: Send + Sync + 'static {
 
     async fn get_item(&self, item_code: &str) -> Result<ItemDetail, StoreError>;
 
+    async fn search_warehouses(
+        &self,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<Warehouse>, StoreError>;
+
     async fn get_warehouse(&self, warehouse: &str) -> Result<Warehouse, StoreError>;
 }
 
@@ -321,6 +327,61 @@ LIMIT 1
         out.name = out.name.trim().to_string();
         out.company = out.company.trim().to_string();
         Ok(out)
+    }
+
+    async fn search_warehouses(
+        &self,
+        query: &str,
+        limit: i64,
+    ) -> Result<Vec<Warehouse>, StoreError> {
+        let limit = normalize_limit(limit);
+        let query = query.trim();
+        let mut sql_text = String::from(
+            r#"
+SELECT
+    name,
+    COALESCE(NULLIF(company, ''), '') AS company
+FROM tabWarehouse
+WHERE 1 = 1
+"#,
+        );
+        let mut args = Vec::new();
+
+        if !query.is_empty() {
+            sql_text.push_str(
+                r#"AND (
+    name LIKE ?
+    OR company LIKE ?
+)
+"#,
+            );
+            args.push(SqlArg::String(format!("%{query}%")));
+            args.push(SqlArg::String(format!("%{query}%")));
+        }
+
+        sql_text.push_str(
+            r#"
+ORDER BY name ASC
+LIMIT ?
+"#,
+        );
+        args.push(SqlArg::I64(limit));
+
+        let mut query_builder = sqlx::query_as::<_, Warehouse>(&sql_text);
+        for arg in args {
+            query_builder = arg.bind_to(query_builder);
+        }
+
+        let mut warehouses = query_builder
+            .fetch_all(&self.pool)
+            .await
+            .map_err(StoreError::SearchWarehouses)?;
+        for warehouse in &mut warehouses {
+            warehouse.name = warehouse.name.trim().to_string();
+            warehouse.company = warehouse.company.trim().to_string();
+        }
+        warehouses.retain(|warehouse| !warehouse.name.is_empty());
+        Ok(warehouses)
     }
 }
 

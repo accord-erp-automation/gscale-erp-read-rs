@@ -32,6 +32,7 @@ pub fn router(store: Arc<dyn CatalogStore>) -> Router {
             "/v1/items/{item_code}/warehouses",
             get(search_item_warehouses),
         )
+        .route("/v1/warehouses", get(search_warehouses))
         .route("/v1/warehouses/{warehouse}", get(get_warehouse))
         .with_state(AppState::new(store))
 }
@@ -120,6 +121,20 @@ async fn get_warehouse(
     Ok(Json(DataResponse { data }))
 }
 
+async fn search_warehouses(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<DataResponse<Vec<crate::store::Warehouse>>>, ApiError> {
+    let query = params.get("query").map(String::as_str).unwrap_or_default();
+    let limit = parse_limit(params.get("limit"));
+    let data = state
+        .store
+        .search_warehouses(query, limit)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(DataResponse { data }))
+}
+
 fn parse_limit(raw: Option<&String>) -> i64 {
     raw.and_then(|value| value.trim().parse::<i64>().ok())
         .filter(|value| *value > 0)
@@ -194,6 +209,7 @@ mod tests {
         stocks: Vec<WarehouseStock>,
         item: Option<ItemDetail>,
         warehouse: Option<Warehouse>,
+        warehouses: Vec<Warehouse>,
     }
 
     #[async_trait]
@@ -221,6 +237,14 @@ mod tests {
 
         async fn get_item(&self, _item_code: &str) -> Result<ItemDetail, StoreError> {
             Ok(self.item.clone().expect("fake item"))
+        }
+
+        async fn search_warehouses(
+            &self,
+            _query: &str,
+            _limit: i64,
+        ) -> Result<Vec<Warehouse>, StoreError> {
+            Ok(self.warehouses.clone())
         }
 
         async fn get_warehouse(&self, _warehouse: &str) -> Result<Warehouse, StoreError> {
@@ -352,5 +376,34 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn warehouse_list_endpoint() {
+        let app = router(Arc::new(FakeStore {
+            warehouses: vec![Warehouse {
+                name: "Stores - A".to_string(),
+                company: "A Company".to_string(),
+            }],
+            ..FakeStore::default()
+        }));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/warehouses?query=stores&limit=10")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let payload: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(payload["data"][0]["name"], "Stores - A");
+        assert_eq!(payload["data"][0]["company"], "A Company");
     }
 }

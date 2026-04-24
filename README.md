@@ -67,6 +67,7 @@ Those responsibilities belong to `gscale-platform`.
 - `GET /v1/items?query=...&limit=...&warehouse=...`
 - `GET /v1/items/{item_code}`
 - `GET /v1/items/{item_code}/warehouses?query=...&limit=...`
+- `GET /v1/warehouses?query=...&limit=...`
 - `GET /v1/warehouses/{warehouse}`
 
 ### Important Semantics
@@ -179,6 +180,7 @@ The current Rust code mirrors the Go service behavior for:
 - health and handshake endpoints,
 - item search and item detail lookup,
 - warehouse shortlist generation,
+- warehouse list search,
 - warehouse detail lookup,
 - config loading from ERP bench/site files,
 - response envelope shape.
